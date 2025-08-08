@@ -98,11 +98,13 @@ class WP_Theme_Updater {
 		$response = wp_remote_get( $url, [ 'headers' => $headers ] );
 		
 		if ( is_wp_error( $response ) ) {
+			error_log('GitHub API request failed: ' . $response->get_error_message());
 			return false;
 		}
 		
 		$body = wp_remote_retrieve_body( $response );
 		if ( empty( $body ) ) {
+			error_log('GitHub API response body empty');
 			return false;
 		}
 		

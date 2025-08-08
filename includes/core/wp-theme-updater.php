@@ -87,6 +87,10 @@ class WP_Theme_Updater {
 		add_filter('site_transient_update_themes', [$this, 'check_update']);
 		add_filter('themes_api', [$this, 'theme_info'], 10, 3);
 		add_filter('upgrader_post_install', [$this, 'update_theme_directory'], 10, 3);
+		
+		add_action('upgrader_process_complete', static function() {
+			wp_clean_themes_cache();
+		}, 20);
 	}
 	
 	private function request($url) {
@@ -220,7 +224,15 @@ class WP_Theme_Updater {
 		
 		// Check if theme was active and reactivate it
 		if ( $was_active ) {
-			switch_theme( $this->theme_slug );
+			$theme = $this->theme_slug;
+			$theme_obj = wp_get_theme($theme);
+			
+			update_option('template', $theme);
+			update_option('stylesheet', $theme);
+			update_option('current_theme', $theme_obj->get('Name'));
+			
+			// Clear theme cache
+			wp_clean_themes_cache();
 		}
 		
 		return $true;

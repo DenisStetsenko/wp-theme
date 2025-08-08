@@ -139,7 +139,7 @@ class WP_Theme_Updater {
 		if ( false === $data ) {
 			$data = $this->request( $this->github_api );
 			if ( $data ) {
-				set_transient( $cache_key, $data, 10 * MINUTE_IN_SECONDS );
+				set_transient( $cache_key, $data, MINUTE_IN_SECONDS );
 			}
 		}
 		

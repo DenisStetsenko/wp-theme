@@ -212,8 +212,6 @@ class WP_Theme_Updater {
 		
 		$theme_dir  = get_theme_root() . '/' . $this->theme_slug;
 		$temp_dir   = $result['destination']; // Temporary GitHub-extracted dir
-		$was_active = ( $this->theme_slug === get_option( 'stylesheet' ) );
-		error_log('$was_active:' . $was_active);
 		
 		// Delete old theme (if it exists)
 		if ( $wp_filesystem->exists( $theme_dir ) ) {
@@ -224,18 +222,18 @@ class WP_Theme_Updater {
 		$wp_filesystem->move( $temp_dir, $theme_dir );
 		
 		// Check if theme was active and reactivate it
+		$active_stylesheet  = wp_get_theme()->get_stylesheet();
+		$was_active         = ( $active_stylesheet === $this->theme_slug );
 		if ( $was_active ) {
-			$theme = $this->theme_slug;
-			$theme_obj = wp_get_theme($theme);
+			wp_clean_themes_cache(); // First clear any stale theme data
 			
-			error_log( print_r($theme_obj, true ));
+			update_option( 'template', $this->theme_slug );
+			update_option( 'stylesheet', $this->theme_slug );
 			
-			update_option('template', $theme);
-			update_option('stylesheet', $theme);
-			update_option('current_theme', $theme_obj->get('Name'));
-			
-			// Clear theme cache
-			wp_clean_themes_cache();
+			$theme_obj = wp_get_theme( $this->theme_slug );
+			if ( $theme_obj->exists() ) {
+				update_option( 'current_theme', $theme_obj->get( 'Name' ) );
+			}
 		}
 		
 		return $true;

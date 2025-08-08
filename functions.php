@@ -1,6 +1,6 @@
 <?php
 // Theme Updater
-include get_theme_file_path('/includes/core/wp-theme-updater-new.php');
+include get_theme_file_path('/includes/core/wp-theme-updater.php');
 
 // Theme Setup
 include get_theme_file_path('/includes/core/wp-theme-setup.php');
@@ -99,9 +99,4 @@ if ( ! function_exists( 'wp_svg_icon' ) ) {
 		
 		return $output;
 	}
-}
-
-
-function testing_new_v105() {
-
 }

@@ -86,6 +86,7 @@ class WP_Theme_Updater {
 		add_filter('http_request_args', [$this, 'add_auth_header'], 10, 2);
 		add_filter('site_transient_update_themes', [$this, 'check_update']);
 		add_filter('themes_api', [$this, 'theme_info'], 10, 3);
+		add_filter('upgrader_post_install', [$this, 'fix_theme_directory'], 10, 3);
 	}
 	
 	private function request($url) {
@@ -175,4 +176,31 @@ class WP_Theme_Updater {
 			'homepage' => "https://github.com/{$this->github_user}/{$this->github_repo}"
 		];
 	}
+	
+	/**
+	 * Fixes the theme directory name after update.
+	 * Hooked into 'upgrader_post_install'.
+	 */
+	public function fix_theme_directory($true, $hook_extra, $result) {
+		global $wp_filesystem;
+		
+		// Only run for our theme
+		if ( ! isset( $hook_extra['theme'] ) || $hook_extra['theme'] !== $this->theme_slug ) {
+			return $true;
+		}
+		
+		$theme_dir = get_theme_root() . '/' . $this->theme_slug;
+		$temp_dir  = $result['destination']; // Temporary GitHub-extracted dir
+		
+		// Delete old theme (if it exists)
+		if ( $wp_filesystem->exists( $theme_dir ) ) {
+			$wp_filesystem->delete( $theme_dir, true );
+		}
+		
+		// Rename temp dir to the correct theme slug
+		$wp_filesystem->move( $temp_dir, $theme_dir );
+		
+		return $true;
+	}
+	
 }

@@ -100,3 +100,8 @@ if ( ! function_exists( 'wp_svg_icon' ) ) {
 		return $output;
 	}
 }
+
+
+function testing_new_v105() {
+
+}

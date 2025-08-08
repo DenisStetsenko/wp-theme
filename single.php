@@ -1,7 +1,6 @@
 <?php
 /**
  * The template for displaying all single posts.
- * testing new updates
  */
 get_header();
 

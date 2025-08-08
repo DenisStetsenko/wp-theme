@@ -139,7 +139,7 @@ class WP_Theme_Updater {
 			return $transient;
 		}
 		
-		// Cache API response for 10 minutes (adjust duration as needed).
+		// Cache API response for 12 hours
 		$cache_key  = 'github_theme_update_' . $this->theme_slug;
 		$data       = get_transient( $cache_key );
 		

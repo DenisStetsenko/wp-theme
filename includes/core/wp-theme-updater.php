@@ -86,7 +86,7 @@ class WP_Theme_Updater {
 		add_filter('http_request_args', [$this, 'add_auth_header'], 10, 2);
 		add_filter('site_transient_update_themes', [$this, 'check_update']);
 		add_filter('themes_api', [$this, 'theme_info'], 10, 3);
-		add_filter('upgrader_post_install', [$this, 'fix_theme_directory'], 10, 3);
+		add_filter('upgrader_post_install', [$this, 'update_theme_directory'], 10, 3);
 	}
 	
 	private function request($url) {
@@ -100,6 +100,12 @@ class WP_Theme_Updater {
 		
 		if ( is_wp_error( $response ) ) {
 			error_log('GitHub API request failed: ' . $response->get_error_message());
+			return false;
+		}
+		
+		$response_code = wp_remote_retrieve_response_code($response);
+		if ( $response_code === 403 ) {
+			error_log( 'GitHub API rate limit exceeded.' );
 			return false;
 		}
 		
@@ -140,7 +146,7 @@ class WP_Theme_Updater {
 		if ( false === $data ) {
 			$data = $this->request( $this->github_api );
 			if ( $data ) {
-				set_transient( $cache_key, $data, MINUTE_IN_SECONDS );
+				set_transient( $cache_key, $data, 12 * HOUR_IN_SECONDS );
 			}
 		}
 		
@@ -152,6 +158,11 @@ class WP_Theme_Updater {
 		
 		if ( version_compare( $this->version, $new_version, '<' ) ) {
 			$package_url = $data->zipball_url ?? ($this->github_zip . $data->tag_name . '.zip');
+			
+			if ( empty( $package_url ) || ! filter_var( $package_url, FILTER_VALIDATE_URL ) ) {
+				error_log( 'Invalid GitHub package URL: ' . $package_url );
+				return $transient;
+			}
 			
 			$transient->response[ $this->theme_slug ] = [
 				'theme'       => $this->theme_slug,
@@ -181,16 +192,30 @@ class WP_Theme_Updater {
 	 * Fixes the theme directory name after update.
 	 * Hooked into 'upgrader_post_install'.
 	 */
-	public function fix_theme_directory($true, $hook_extra, $result) {
+	public function update_theme_directory( $true, $hook_extra, $result ) {
 		global $wp_filesystem;
+		
+		// Initialize WP_Filesystem if not already loaded
+		if ( ! class_exists( 'WP_Filesystem' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+			WP_Filesystem();
+		}
+		
 		
 		// Only run for our theme
 		if ( ! isset( $hook_extra['theme'] ) || $hook_extra['theme'] !== $this->theme_slug ) {
 			return $true;
 		}
 		
-		$theme_dir = get_theme_root() . '/' . $this->theme_slug;
-		$temp_dir  = $result['destination']; // Temporary GitHub-extracted dir
+		$theme_dir  = get_theme_root() . '/' . $this->theme_slug;
+		$temp_dir   = $result['destination']; // Temporary GitHub-extracted dir
+		$was_active = ( $this->theme_slug === get_option( 'stylesheet' ) );
+		
+		// Check filesystem availability
+		if ( ! $wp_filesystem || ! is_a( $wp_filesystem, 'WP_Filesystem_Base' ) ) {
+			error_log( 'Filesystem not initialized' );
+			return new WP_Error( 'fs_unavailable', __( 'Filesystem not available' ) );
+		}
 		
 		// Delete old theme (if it exists)
 		if ( $wp_filesystem->exists( $theme_dir ) ) {
@@ -199,6 +224,11 @@ class WP_Theme_Updater {
 		
 		// Rename temp dir to the correct theme slug
 		$wp_filesystem->move( $temp_dir, $theme_dir );
+		
+		// Check if theme was active and reactivate it
+		if ( $was_active ) {
+			switch_theme( $this->theme_slug );
+		}
 		
 		return $true;
 	}

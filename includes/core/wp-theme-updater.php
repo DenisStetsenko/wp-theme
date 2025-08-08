@@ -228,6 +228,8 @@ class WP_Theme_Updater {
 			$theme = $this->theme_slug;
 			$theme_obj = wp_get_theme($theme);
 			
+			error_log( print_r($theme_obj, true ));
+			
 			update_option('template', $theme);
 			update_option('stylesheet', $theme);
 			update_option('current_theme', $theme_obj->get('Name'));

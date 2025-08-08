@@ -1,6 +1,6 @@
 <?php
 // Theme Updater
-include get_theme_file_path('/includes/core/wp-theme-updater.php');
+include get_theme_file_path('/includes/core/wp-theme-updater-new.php');
 
 // Theme Setup
 include get_theme_file_path('/includes/core/wp-theme-setup.php');

@@ -192,72 +192,42 @@ class WP_Theme_Updater {
 	 * Fixes the theme directory name after update.
 	 * Hooked into 'upgrader_post_install'.
 	 */
-	public function update_theme_directory($true, $hook_extra, $result) {
+	public function update_theme_directory( $true, $hook_extra, $result ) {
 		global $wp_filesystem;
 		
-		// Verify this is our theme update
-		if (!isset($hook_extra['theme']) || $hook_extra['theme'] !== $this->theme_slug) {
+		// Initialize WP_Filesystem if not already loaded
+		if ( ! class_exists( 'WP_Filesystem' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+			WP_Filesystem();
+		}
+		
+		
+		// Only run for our theme
+		if ( ! isset( $hook_extra['theme'] ) || $hook_extra['theme'] !== $this->theme_slug ) {
 			return $true;
 		}
 		
-		// Initialize filesystem properly
-		if (!function_exists('WP_Filesystem')) {
-			require_once ABSPATH . 'wp-admin/includes/file.php';
+		$theme_dir  = get_theme_root() . '/' . $this->theme_slug;
+		$temp_dir   = $result['destination']; // Temporary GitHub-extracted dir
+		$was_active = ( $this->theme_slug === get_option( 'stylesheet' ) );
+		
+		// Check filesystem availability
+		if ( ! $wp_filesystem || ! is_a( $wp_filesystem, 'WP_Filesystem_Base' ) ) {
+			error_log( 'Filesystem not initialized' );
+			return new WP_Error( 'fs_unavailable', __( 'Filesystem not available' ) );
 		}
 		
-		$credentials = request_filesystem_credentials('');
-		if (!WP_Filesystem($credentials)) {
-			error_log('Failed to initialize filesystem');
-			return new WP_Error('fs_init_failed', __('Could not initialize filesystem'));
+		// Delete old theme (if it exists)
+		if ( $wp_filesystem->exists( $theme_dir ) ) {
+			$wp_filesystem->delete( $theme_dir, true );
 		}
 		
-		$theme_dir = trailingslashit(get_theme_root()) . $this->theme_slug;
-		$temp_dir = trailingslashit($result['destination']);
-		$was_active = ($this->theme_slug === get_option('stylesheet'));
+		// Rename temp dir to the correct theme slug
+		$wp_filesystem->move( $temp_dir, $theme_dir );
 		
-		try {
-			// 1. Verify temp directory exists
-			if (!$wp_filesystem->exists($temp_dir)) {
-				throw new \RuntimeException('Temp directory missing');
-			}
-			
-			// 2. Remove old theme if exists
-			if ($wp_filesystem->exists($theme_dir)) {
-				if (!$wp_filesystem->delete($theme_dir, true)) {
-					throw new \RuntimeException('Failed to delete old theme');
-				}
-			}
-			
-			// 3. Move new theme into place
-			if (!$wp_filesystem->move($temp_dir, $theme_dir)) {
-				throw new \RuntimeException('Failed to move theme');
-			}
-			
-			// 4. Verify theme is valid before activation
-			$new_theme = wp_get_theme($this->theme_slug);
-			if (!$new_theme->exists()) {
-				throw new \RuntimeException('New theme validation failed');
-			}
-			
-			// 5. Reactivate if needed
-			if ($was_active) {
-				switch_theme($this->theme_slug);
-				
-				// Double-check activation
-				if (get_option('stylesheet') !== $this->theme_slug) {
-					throw new \RuntimeException('Reactivating theme failed');
-				}
-			}
-			
-		} catch (Exception $e) {
-			error_log('Theme update failed: ' . $e->getMessage());
-			
-			// Attempt fallback reactivation if was previously active
-			if ($was_active && wp_get_theme($this->theme_slug)->exists()) {
-				switch_theme($this->theme_slug);
-			}
-			
-			return new WP_Error('theme_update_failed', $e->getMessage());
+		// Check if theme was active and reactivate it
+		if ( $was_active ) {
+			switch_theme( $this->theme_slug );
 		}
 		
 		return $true;

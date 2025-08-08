@@ -86,7 +86,8 @@ class WP_Theme_Updater {
 		add_filter('http_request_args', [$this, 'add_auth_header'], 10, 2);
 		add_filter('site_transient_update_themes', [$this, 'check_update']);
 		add_filter('themes_api', [$this, 'theme_info'], 10, 3);
-		add_filter('upgrader_post_install', [$this, 'update_theme_directory'], 10, 3);
+		//add_filter('upgrader_post_install', [$this, 'update_theme_directory'], 10, 3);
+		add_filter('upgrader_source_selection', [$this, 'fix_source_directory'], 10, 4);
 	}
 	
 	private function request($url) {
@@ -195,12 +196,11 @@ class WP_Theme_Updater {
 	public function update_theme_directory( $true, $hook_extra, $result ) {
 		global $wp_filesystem;
 		
-		// Initialize WP_Filesystem if not already loaded
-		if ( ! class_exists( 'WP_Filesystem' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/file.php';
-			WP_Filesystem();
+		// Check filesystem availability
+		if ( ! $wp_filesystem || ! is_a( $wp_filesystem, 'WP_Filesystem_Base' ) ) {
+			error_log( 'Filesystem not initialized' );
+			return new WP_Error( 'fs_unavailable', __( 'Filesystem not available', 'wp-theme' ) );
 		}
-		
 		
 		// Only run for our theme
 		if ( ! isset( $hook_extra['theme'] ) || $hook_extra['theme'] !== $this->theme_slug ) {
@@ -210,12 +210,6 @@ class WP_Theme_Updater {
 		$theme_dir  = get_theme_root() . '/' . $this->theme_slug;
 		$temp_dir   = $result['destination']; // Temporary GitHub-extracted dir
 		$was_active = ( $this->theme_slug === get_option( 'stylesheet' ) );
-		
-		// Check filesystem availability
-		if ( ! $wp_filesystem || ! is_a( $wp_filesystem, 'WP_Filesystem_Base' ) ) {
-			error_log( 'Filesystem not initialized' );
-			return new WP_Error( 'fs_unavailable', __( 'Filesystem not available' ) );
-		}
 		
 		// Delete old theme (if it exists)
 		if ( $wp_filesystem->exists( $theme_dir ) ) {
@@ -231,6 +225,40 @@ class WP_Theme_Updater {
 		}
 		
 		return $true;
+	}
+	
+	
+	
+	/**
+	 * Renames the temporary GitHub directory to match the theme slug.
+	 */
+	public function fix_source_directory($source, $remote_source, $upgrader, $hook_extra) {
+		global $wp_filesystem;
+		
+		// Check filesystem availability
+		if ( ! $wp_filesystem || ! is_a( $wp_filesystem, 'WP_Filesystem_Base' ) ) {
+			error_log( 'Filesystem not initialized' );
+			return new WP_Error( 'fs_unavailable', __( 'Filesystem not available', 'wp-theme' ) );
+		}
+		
+		// Only run for our theme
+		if ( ! isset( $hook_extra['theme'] ) || $hook_extra['theme'] !== $this->theme_slug ) {
+			return $source;
+		}
+		
+		$correct_dir = trailingslashit( $remote_source ) . $this->theme_slug;
+		
+		// If directory is already correctly named, skip
+		if ( basename( $source ) === $this->theme_slug ) {
+			return $source;
+		}
+		
+		// Rename the directory
+		if ( $wp_filesystem->move( $source, $correct_dir ) ) {
+			return $correct_dir;
+		}
+		
+		return $source;
 	}
 	
 }

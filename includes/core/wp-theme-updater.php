@@ -170,11 +170,7 @@ class WP_Theme_Updater {
 			'name'     => ucfirst( str_replace( '-', ' ', $this->theme_slug ) ),
 			'slug'     => $this->theme_slug,
 			'version'  => $this->version,
-			'author'   => '<a href="https://yourdomain.com">Your Name</a>',
-			'homepage' => "https://github.com/{$this->github_user}/{$this->github_repo}",
-			'sections' => [
-				'description' => 'Core theme with GitHub updates (private/public).'
-			]
+			'homepage' => "https://github.com/{$this->github_user}/{$this->github_repo}"
 		];
 	}
 }

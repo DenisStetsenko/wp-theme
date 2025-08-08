@@ -72,15 +72,6 @@ if ( ! function_exists('wp_custom_theme_setup') ) {
 	  
 	  // Remove feed icon link from legacy RSS widget.
 	  add_filter( 'rss_widget_feed_link', '__return_empty_string' );
-		
-		// Check for updates
-	  $theme = wp_get_theme();
-	  new WP_Theme_Updater(
-		  'wp-theme',                       																						// Theme folder name
-		  'DenisStetsenko',                 																						// GitHub user/org
-		  'wp-theme',                       																						// Repository name
-		  $theme->parent() ? $theme->parent()->get('Version') :  $theme->get('Version')	// Current theme version
-	  );
   }
 }
 add_action( 'after_setup_theme', 'wp_custom_theme_setup' );

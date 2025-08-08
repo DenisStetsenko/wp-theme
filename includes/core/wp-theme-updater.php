@@ -213,6 +213,7 @@ class WP_Theme_Updater {
 		$theme_dir  = get_theme_root() . '/' . $this->theme_slug;
 		$temp_dir   = $result['destination']; // Temporary GitHub-extracted dir
 		$was_active = ( $this->theme_slug === get_option( 'stylesheet' ) );
+		error_log('$was_active:' . $was_active);
 		
 		// Delete old theme (if it exists)
 		if ( $wp_filesystem->exists( $theme_dir ) ) {
@@ -239,3 +240,21 @@ class WP_Theme_Updater {
 	}
 	
 }
+
+
+if ( ! function_exists('wp_custom_theme_update') ) {
+	/**
+	 * Check for updates
+	 * @return void
+	 */
+	function wp_custom_theme_update() {
+		$theme = wp_get_theme();
+		new WP_Theme_Updater(
+			'wp-theme',                       																						// Theme folder name
+			'DenisStetsenko',                 																						// GitHub user/org
+			'wp-theme',                       																						// Repository name
+			$theme->parent() ? $theme->parent()->get('Version') :  $theme->get('Version')	// Current theme version
+		);
+	}
+}
+add_action( 'after_setup_theme', 'wp_custom_theme_update' );

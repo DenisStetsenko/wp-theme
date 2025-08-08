@@ -76,7 +76,7 @@ if ( ! function_exists('wp_custom_theme_setup') ) {
 		// Check for updates
 	  new WP_Theme_Updater(
 		  'wp-theme',               // Theme folder name
-		  'github-username',        // GitHub user/org
+		  'DenisStetsenko',         // GitHub user/org
 		  'wp-theme',               // Repository name
 		  '1.0'                     // Current theme version
 	  );

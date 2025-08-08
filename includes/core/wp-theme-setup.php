@@ -78,7 +78,7 @@ if ( ! function_exists('wp_custom_theme_setup') ) {
 		  'wp-theme',               // Theme folder name
 		  'DenisStetsenko',         // GitHub user/org
 		  'wp-theme',               // Repository name
-		  '1.0'                     // Current theme version
+		  '1.0.1'                   // Current theme version
 	  );
   }
 }

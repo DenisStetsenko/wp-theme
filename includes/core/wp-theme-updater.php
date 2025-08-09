@@ -1,244 +1,97 @@
 <?php
-/**
- * Handles automatic WordPress theme updates from a GitHub repository.
- *
- * Connects to the GitHub API to fetch the latest release data, compares it with
- * the currently installed theme version, and integrates with WordPress' update
- * system to provide update notifications and install the new version.
- *
- * Supports public and private repositories (via personal access token).
- * Requires repository owner, repository name, and optional authentication token.
- */
 class WP_Theme_Updater {
-	/**
-	 * Theme slug (directory name of the theme).
-	 *
-	 * @var string|mixed
-	 */
+	
 	private string $theme_slug;
-	
-	/**
-	 * GitHub username or organization name.
-	 *
-	 * @var string
-	 */
 	private string $github_user;
-	
-	/**
-	 * GitHub repository name.
-	 *
-	 * @var string
-	 */
 	private string $github_repo;
-	
-	/**
-	 * Base GitHub API endpoint for the repository.
-	 *
-	 * @var string
-	 */
 	private string $github_api;
-	
-	/**
-	 * Direct URL to the theme ZIP file.
-	 *
-	 * @var string
-	 */
 	private string $github_zip;
-	
-	/**
-	 * Currently installed theme version.
-	 *
-	 * @var string
-	 */
 	private string $version;
-	
-	/**
-	 * Personal access token for GitHub (only required for private repos).
-	 *
-	 * @var string|null
-	 */
-	private ?string $token;
-	
-	/**
-	 * Indicates whether the repository is private.
-	 *
-	 * @var bool
-	 */
+	private string $token;
 	private bool $is_private;
 	
-	public function __construct(string $theme_slug, string $github_user, string $github_repo, string $version, ?string $token = null, bool $is_private = false) {
-		$this->theme_slug  = $theme_slug;
-		$this->github_user = $github_user;
-		$this->github_repo = $github_repo;
-		$this->version     = $version;
-		$this->is_private  = $is_private;
-		if ( ! empty( $token ) ) {
-			$this->token = $token;
-		} elseif ( defined( 'GITHUB_TOKEN' ) ) {
+	public function __construct(array $config) {
+		$this->theme_slug  = $config['theme_slug']  ?? '';
+		$this->github_user = $config['github_user'] ?? '';
+		$this->github_repo = $config['github_repo'] ?? '';
+		$this->is_private  = $config['is_private']  ?? false;
+		
+		if (!empty($config['token'])) {
+			$this->token = $config['token'];
+		} elseif (defined('GITHUB_TOKEN')) {
 			$this->token = GITHUB_TOKEN;
 		} else {
 			$this->token = '';
 		}
 		
-		$this->github_api  = "https://api.github.com/repos/{$github_user}/{$github_repo}/releases/latest";
-		$this->github_zip  = "https://github.com/{$github_user}/{$github_repo}/archive/refs/tags/";
+		$theme = wp_get_theme($this->theme_slug);
+		$this->version = $theme->parent()
+			? $theme->parent()->get('Version')
+			: $theme->get('Version');
 		
-		add_filter('http_request_args', [$this, 'add_auth_header'], 10, 2);
-		add_filter('site_transient_update_themes', [$this, 'check_update']);
-		add_filter('themes_api', [$this, 'theme_info'], 10, 3);
-		add_filter('upgrader_post_install', [$this, 'update_theme_directory'], 10, 3);
+		$branch = $config['branch'] ?? 'main';
+		$this->github_api = "https://api.github.com/repos/{$this->github_user}/{$this->github_repo}/releases/latest";
+		$this->github_zip = "https://github.com/{$this->github_user}/{$this->github_repo}/archive/refs/heads/{$branch}.zip";
 		
-		add_action('upgrader_process_complete', static function() {
-			wp_clean_themes_cache();
-		}, 20);
+		add_filter('pre_set_site_transient_update_themes', [$this, 'check_theme_updates']);
 	}
 	
-	private function request($url) {
-		$headers = [ 'User-Agent' => 'WordPress Theme Updater' ];
-		
-		if ( ! empty( $this->token ) ) {
-			$headers['Authorization'] = 'token ' . $this->token;
+	public function check_theme_updates( $transient ) {
+		if ( empty( $transient->checked[ $this->theme_slug ] ) ) {
+			error_log( "[WP_Theme_Updater] No checked version found for theme '{$this->theme_slug}', skipping update check." );
+			return $transient;
 		}
 		
-		$response = wp_remote_get( $url, [ 'headers' => $headers ] );
-		
-		if ( is_wp_error( $response ) ) {
-			error_log('GitHub API request failed: ' . $response->get_error_message());
-			return false;
-		}
-		
-		$response_code = wp_remote_retrieve_response_code($response);
-		if ( $response_code === 403 ) {
-			error_log( 'GitHub API rate limit exceeded.' );
-			return false;
-		}
-		
-		$body = wp_remote_retrieve_body( $response );
-		if ( empty( $body ) ) {
-			error_log('GitHub API response body empty');
-			return false;
-		}
-		
-		try {
-			return json_decode( $body, false, 512, JSON_THROW_ON_ERROR );
-		} catch (JsonException $e) {
-			error_log('GitHub API JSON decode error: ' . $e->getMessage());
-			return false;
-		}
-	}
-	
-	public function add_auth_header($args, $url) {
-		if ( $this->is_private && ! empty( $this->token ) && str_contains( $url, "github.com/{$this->github_user}/{$this->github_repo}/zipball" ) ) {
-			if ( ! isset( $args['headers'] ) ) {
-				$args['headers'] = [];
-			}
+		$args = [
+			'headers' => [
+				'Accept'     => 'application/vnd.github.v3+json',
+				'User-Agent' => 'WordPress Theme Updater'
+			]
+		];
+		if ( $this->is_private && ! empty( $this->token ) ) {
 			$args['headers']['Authorization'] = 'token ' . $this->token;
 		}
 		
-		return $args;
-	}
-	
-	public function check_update( $transient ) {
-		if ( empty( $transient->checked[ $this->theme_slug ] ) ) {
+		$response = wp_remote_get( $this->github_api, $args );
+		if ( is_wp_error( $response ) ) {
+			error_log( '[WP_Theme_Updater] Error fetching GitHub API: ' . $response->get_error_message() );
 			return $transient;
 		}
 		
-		// Cache API response for 12 hours
-		$cache_key  = 'github_theme_update_' . $this->theme_slug;
-		$data       = get_transient( $cache_key );
-		
-		if ( false === $data ) {
-			$data = $this->request( $this->github_api );
-			if ( $data ) {
-				set_transient( $cache_key, $data, 12 * HOUR_IN_SECONDS );
-			}
-		}
-		
-		if ( ! $data || ! isset( $data->tag_name ) ) {
+		$data = json_decode( wp_remote_retrieve_body( $response ), true, 512, JSON_THROW_ON_ERROR );
+		if ( empty( $data['tag_name'] ) ) {
+			error_log( "[WP_Theme_Updater] GitHub API response missing 'tag_name'." );
 			return $transient;
 		}
 		
-		$new_version = ltrim( $data->tag_name, 'v' );
+		$remote_version = ltrim( $data['tag_name'], 'v' );
 		
-		if ( version_compare( $this->version, $new_version, '<' ) ) {
-			$package_url = $data->zipball_url ?? ($this->github_zip . $data->tag_name . '.zip');
+		if ( version_compare( $this->version, $remote_version, '<' ) ) {
+			$package_url = $this->github_zip;
 			
-			if ( empty( $package_url ) || ! filter_var( $package_url, FILTER_VALIDATE_URL ) ) {
+			if ( ! empty( $this->token ) ) {
+				$package_url = add_query_arg( 'access_token', $this->token, $package_url );
+				
+			} elseif ( empty( $package_url ) || ! filter_var( $package_url, FILTER_VALIDATE_URL ) ) {
 				error_log( 'Invalid GitHub package URL: ' . $package_url );
 				return $transient;
 			}
 			
+			error_log( '[WP_Theme_Updater] Update available. Adding update package URL.' );
+			
 			$transient->response[ $this->theme_slug ] = [
 				'theme'       => $this->theme_slug,
-				'new_version' => $new_version,
-				'url'         => "https://github.com/{$this->github_user}/{$this->github_repo}",
+				'new_version' => $remote_version,
+				'url'         => $data['html_url'] ?? '',
 				'package'     => $package_url
 			];
+			
+		} else {
+			error_log( "[WP_Theme_Updater] No update available for theme '{$this->theme_slug}'." );
 		}
 		
 		return $transient;
 	}
-	
-	public function theme_info( $res, $action, $args ) {
-		if ( $action !== 'theme_information' || $args->slug !== $this->theme_slug ) {
-			return $res;
-		}
-		
-		return (object) [
-			'name'     => ucfirst( str_replace( '-', ' ', $this->theme_slug ) ),
-			'slug'     => $this->theme_slug,
-			'version'  => $this->version,
-			'homepage' => "https://github.com/{$this->github_user}/{$this->github_repo}"
-		];
-	}
-	
-	/**
-	 * Fixes the theme directory name after update.
-	 * Hooked into 'upgrader_post_install'.
-	 */
-	public function update_theme_directory( $true, $hook_extra, $result ) {
-		global $wp_filesystem;
-		
-		// Check filesystem availability
-		if ( ! $wp_filesystem || ! is_a( $wp_filesystem, 'WP_Filesystem_Base' ) ) {
-			error_log( 'Filesystem not initialized' );
-			return new WP_Error( 'fs_unavailable', __( 'Filesystem not available', 'wp-theme' ) );
-		}
-		
-		// Only run for our theme
-		if ( ! isset( $hook_extra['theme'] ) || $hook_extra['theme'] !== $this->theme_slug ) {
-			return $true;
-		}
-		
-		$theme_dir  = get_theme_root() . '/' . $this->theme_slug;
-		$temp_dir   = $result['destination']; // Temporary GitHub-extracted dir
-		
-		// Delete old theme (if it exists)
-		if ( $wp_filesystem->exists( $theme_dir ) ) {
-			$wp_filesystem->delete( $theme_dir, true );
-		}
-		
-		// Rename temp dir to the correct theme slug
-		$wp_filesystem->move( $temp_dir, $theme_dir );
-		
-		// Check if theme was active and reactivate it
-		$active_stylesheet  = wp_get_theme()->get_stylesheet();
-		$was_active         = ( $active_stylesheet === $this->theme_slug );
-		if ( $was_active ) {
-			wp_clean_themes_cache(); // First clear any stale theme data
-			
-			update_option( 'template', $this->theme_slug );
-			update_option( 'stylesheet', $this->theme_slug );
-			
-			$theme_obj = wp_get_theme( $this->theme_slug );
-			if ( $theme_obj->exists() ) {
-				update_option( 'current_theme', $theme_obj->get( 'Name' ) );
-			}
-		}
-		
-		return $true;
-	}
-	
 }
 
 
@@ -248,13 +101,13 @@ if ( ! function_exists('wp_custom_theme_update') ) {
 	 * @return void
 	 */
 	function wp_custom_theme_update() {
-		$theme = wp_get_theme();
-		new WP_Theme_Updater(
-			'wp-theme',                       																						// Theme folder name
-			'DenisStetsenko',                 																						// GitHub user/org
-			'wp-theme',                       																						// Repository name
-			$theme->parent() ? $theme->parent()->get('Version') :  $theme->get('Version')	// Current theme version
-		);
+		new WP_Theme_Updater([
+			'theme_slug'  => 'wp-theme',
+			'github_user' => 'DenisStetsenko',
+			'github_repo' => 'wp-theme',
+			'branch'      => 'main',
+			'is_private'  => false
+		]);
 	}
 }
 add_action( 'after_setup_theme', 'wp_custom_theme_update' );

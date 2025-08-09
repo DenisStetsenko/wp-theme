@@ -1,5 +1,14 @@
 <?php
-
+/**
+ * Handles automatic WordPress theme updates from a GitHub repository.
+ *
+ * Connects to the GitHub API to fetch the latest release data, compares it with
+ * the currently installed theme version, and integrates with WordPress' update
+ * system to provide update notifications and install the new version.
+ *
+ * Supports public and private repositories (via personal access token).
+ * Requires repository owner, repository name, and optional authentication token.
+ */
 class WP_Theme_Updater {
 	
 	private string $theme_slug;
@@ -27,16 +36,23 @@ class WP_Theme_Updater {
 		
 		$theme         = wp_get_theme( $this->theme_slug );
 		$this->version = $theme->parent()
-											? $theme->parent()->get( 'Version' )
-											: $theme->get( 'Version' );
+			? $theme->parent()->get( 'Version' )
+			: $theme->get( 'Version' );
 		
-		$branch           = $config['branch'] ?? 'main';
 		$this->github_api = "https://api.github.com/repos/{$this->github_user}/{$this->github_repo}/releases/latest";
-		$this->github_zip = "https://github.com/{$this->github_user}/{$this->github_repo}/archive/refs/heads/{$branch}.zip";
+		$this->github_zip = "https://github.com/{$github_user}/{$github_repo}/archive/refs/tags/";
 		
 		add_filter( 'pre_set_site_transient_update_themes', [ $this, 'check_theme_updates' ] );
+		add_filter( 'upgrader_source_selection', [ $this, 'rename_theme_folder' ], 10, 3 );
 	}
 	
+	/**
+	 * Trigger theme update check
+	 * @param $transient
+	 *
+	 * @return mixed
+	 * @throws JsonException
+	 */
 	public function check_theme_updates( $transient ) {
 		if ( empty( $transient->checked[ $this->theme_slug ] ) ) {
 			error_log( "[WP_Theme_Updater] No checked version found for theme '{$this->theme_slug}', skipping update check." );
@@ -59,28 +75,29 @@ class WP_Theme_Updater {
 			return $transient;
 		}
 		
+		if ( wp_remote_retrieve_response_code($response) === 403 ) {
+			error_log( '[WP_Theme_Updater] GitHub API rate limit exceeded.' );
+			return $transient;
+		}
+		
 		$data = json_decode( wp_remote_retrieve_body( $response ), true, 512, JSON_THROW_ON_ERROR );
 		if ( empty( $data['tag_name'] ) ) {
 			error_log( "[WP_Theme_Updater] GitHub API response missing 'tag_name'." );
 			return $transient;
 		}
 		
-		$remote_version = ltrim( $data['tag_name'], 'v' );
-		
-		if ( version_compare( $this->version, $remote_version, '<' ) ) {
-			$package_url = $this->github_zip;
+		$new_version = ltrim( $data['tag_name'], 'v' );
+		if ( version_compare( $this->version, $new_version, '<' ) ) {
+			$package_url = $data->zipball_url ?? ($this->github_zip . $data->tag_name . '.zip');
 			
-			if ( ! empty( $this->token ) ) {
-				$package_url = add_query_arg( 'access_token', $this->token, $package_url );
-				
-			} elseif ( empty( $package_url ) || ! filter_var( $package_url, FILTER_VALIDATE_URL ) ) {
+			if ( empty( $package_url ) || ! filter_var( $package_url, FILTER_VALIDATE_URL ) ) {
 				error_log( 'Invalid GitHub package URL: ' . $package_url );
 				return $transient;
 			}
 			
 			$transient->response[ $this->theme_slug ] = [
 				'theme'       => $this->theme_slug,
-				'new_version' => $remote_version,
+				'new_version' => $new_version,
 				'url'         => $data['html_url'] ?? '',
 				'package'     => $package_url
 			];
@@ -91,6 +108,25 @@ class WP_Theme_Updater {
 		
 		return $transient;
 	}
+	
+	
+	/**
+	 * Rename the extracted folder from <repo>-<branch> to your $theme_slug
+	 */
+	public function rename_theme_folder( $source, $remote_source, $upgrader ) {
+		global $wp_filesystem;
+		
+		if ( isset( $upgrader->skin->theme ) && $upgrader->skin->theme === $this->theme_slug ) {
+			$new_source = trailingslashit( $remote_source ) . $this->theme_slug;
+			
+			if ( $wp_filesystem->move( $source, $new_source ) ) {
+				return $new_source;
+			}
+		}
+		
+		return $source;
+	}
+	
 }
 
 
@@ -104,7 +140,6 @@ if ( ! function_exists( 'wp_custom_theme_update' ) ) {
 			'theme_slug'  => 'wp-theme',
 			'github_user' => 'DenisStetsenko',
 			'github_repo' => 'wp-theme',
-			'branch'      => 'main',
 			'is_private'  => false
 		] );
 	}

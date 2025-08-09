@@ -43,8 +43,7 @@ class WP_Theme_Updater {
 		$this->github_zip = "https://github.com/{$this->github_user}/{$this->github_repo}/archive/refs/tags/";
 		
 		add_filter( 'pre_set_site_transient_update_themes', [ $this, 'check_theme_updates' ] );
-		
-		add_filter( 'upgrader_post_install', [ $this, 'post_install' ], 10, 3 );
+		add_filter( 'upgrader_post_install', [ $this, 'fix_theme_directory' ], 10, 3 );
 	}
 	
 	/**
@@ -116,46 +115,29 @@ class WP_Theme_Updater {
 	}
 	
 	/**
-	 * Rename wp-theme
-	 * @param $response
-	 * @param $hook_extra
-	 * @param $result
-	 *
-	 * @return mixed
+	 * Fixes the theme directory name after update.
+	 * Hooked into 'upgrader_post_install'.
 	 */
-	public function post_install( $response, $hook_extra, $result ) {
-		if ( ( $hook_extra['theme'] ?? false ) !== $this->theme_slug ) {
-			return $response;
-		}
-		
+	public function fix_theme_directory($true, $hook_extra, $result) {
 		global $wp_filesystem;
-		if ( ! $wp_filesystem ) {
-			require_once( ABSPATH . 'wp-admin/includes/file.php' );
-			WP_Filesystem();
+		
+		// Only run for our theme
+		if ( ! isset( $hook_extra['theme'] ) || $hook_extra['theme'] !== $this->theme_slug ) {
+			return $true;
 		}
 		
-		$theme_folder = rtrim( wp_normalize_path( WP_CONTENT_DIR . '/themes/' . $this->theme_slug ), '/' );
-		$dest_folder  = rtrim( wp_normalize_path( $result['destination'] ), '/' );
+		$theme_dir = get_theme_root() . '/' . $this->theme_slug;
+		$temp_dir  = $result['destination']; // Temporary GitHub-extracted dir
 		
-		if ( $dest_folder !== $theme_folder ) {
-			$moved = $wp_filesystem->move( $dest_folder, $theme_folder );
-			if ( ! $moved ) {
-				error_log("[WP_Theme_Updater] Failed to rename theme folder from $dest_folder to $theme_folder");
-				return $response;
-			}
+		// Delete old theme (if it exists)
+		if ( $wp_filesystem->exists( $theme_dir ) ) {
+			$wp_filesystem->delete( $theme_dir, true );
 		}
 		
-		$current_theme = wp_get_theme();
-		if ( $current_theme->parent() && $current_theme->get_stylesheet() !== $this->theme_slug ) {
-			// Parent theme updated, child active: do not switch.
-			error_log( "[WP_Theme_Updater]  Parent theme updated, child active: do not switch. {$this->theme_slug}" );
-			
-		} else if ( $current_theme->get_stylesheet() !== $this->theme_slug ) {
-			switch_theme( $this->theme_slug );
-			error_log( "[WP_Theme_Updater] Switched active theme to {$this->theme_slug}" );
-		}
+		// Rename temp dir to the correct theme slug
+		$wp_filesystem->move( $temp_dir, $theme_dir );
 		
-		return $response;
+		return $true;
 	}
 	
 }

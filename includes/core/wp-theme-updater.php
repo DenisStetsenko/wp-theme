@@ -42,11 +42,15 @@ class WP_Theme_Updater {
 		$this->github_api = "https://api.github.com/repos/{$this->github_user}/{$this->github_repo}/releases/latest";
 		$this->github_zip = "https://github.com/{$this->github_user}/{$this->github_repo}/archive/refs/tags/";
 		
+		add_filter( 'http_request_args', [ $this, 'disable_native_wp_update_check' ], 5, 2 );
 		add_filter( 'http_request_args', [ $this, 'add_auth_header' ], 10, 2 );
 		add_filter( 'pre_set_site_transient_update_themes', [ $this, 'check_theme_updates' ] );
 		add_filter( 'upgrader_post_install', [ $this, 'fix_theme_directory' ], 10, 3 );
 		
 		add_action( 'upgrader_process_complete', [ $this, 'restore_active_theme' ], 10, 2 );
+		
+		// Deletes our transients if we're force-checking the updater
+		$this->clear_transient_forced();
 	}
 	
 	/**
@@ -151,6 +155,26 @@ class WP_Theme_Updater {
 	
 	
 	/**
+	 * Disables requests to the wp.org repository for this theme.
+	 *
+	 * @since 1.0
+	 *
+	 * @param array  $request An array of HTTP request arguments.
+	 * @param string $url The request URL.
+	 * @return array
+	 */
+	public function disable_native_wp_update_check( $request, $url ) {
+		if ( str_contains( $url, '//api.wordpress.org/themes/update-check/1.1/' ) ) {
+			$data = json_decode( $request['body']['themes'], false, 512, JSON_THROW_ON_ERROR );
+			unset( $data->themes->{$this->theme_slug} );
+			$request['body']['themes'] = wp_json_encode( $data );
+		}
+		
+		return $request;
+	}
+	
+	
+	/**
 	 * Fixes the theme directory name after update.
 	 * Keep new version in a backup folder
 	 * This prevents leaving site with broken theme if move fails.
@@ -173,8 +197,7 @@ class WP_Theme_Updater {
 		
 		if ( $theme_dir === $github_dir ) {
 			// nothing to do
-			delete_site_transient( 'update_themes' );
-			wp_clean_themes_cache();
+			$this->clear_transient();
 			return $response;
 		}
 		
@@ -203,8 +226,7 @@ class WP_Theme_Updater {
 		}
 		
 		// clear caches and transients
-		wp_clean_themes_cache();
-		delete_site_transient( 'update_themes' );
+		$this->clear_transient();
 		
 		return $response;
 	}
@@ -235,8 +257,30 @@ class WP_Theme_Updater {
 			
 			// Only switch if WP set a default (or different) theme
 			switch_theme( $this->theme_slug );
-			wp_clean_themes_cache();
-			delete_site_transient('update_themes');
+			$this->clear_transient();
+		}
+	}
+	
+	
+	/**
+	 * Clears our transient and object cache after updating
+	 */
+	public function clear_transient(): void {
+		wp_clean_themes_cache();
+		delete_site_transient('update_themes');
+		wp_cache_delete('update_themes', 'site-transient');
+	}
+	
+	/**
+	 * Clears the transient when forced from the upgrader
+	 */
+	private function clear_transient_forced(): void {
+		global $pagenow;
+		
+		if ( 'update-core.php' === $pagenow && isset($_GET['force-check']) ) {
+			$this->clear_transient();
+		} elseif ( 'themes.php' === $pagenow ) {
+			$this->clear_transient();
 		}
 	}
 	

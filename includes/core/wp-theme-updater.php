@@ -1,4 +1,5 @@
 <?php
+
 class WP_Theme_Updater {
 	
 	private string $theme_slug;
@@ -7,33 +8,33 @@ class WP_Theme_Updater {
 	private string $github_api;
 	private string $github_zip;
 	private string $version;
-	private string $token;
+	private ?string $token;
 	private bool $is_private;
 	
-	public function __construct(array $config) {
-		$this->theme_slug  = $config['theme_slug']  ?? '';
+	public function __construct( array $config ) {
+		$this->theme_slug  = $config['theme_slug'] ?? '';
 		$this->github_user = $config['github_user'] ?? '';
 		$this->github_repo = $config['github_repo'] ?? '';
-		$this->is_private  = $config['is_private']  ?? false;
+		$this->is_private  = $config['is_private'] ?? false;
 		
-		if (!empty($config['token'])) {
+		if ( ! empty( $config['token'] ) ) {
 			$this->token = $config['token'];
-		} elseif (defined('GITHUB_TOKEN')) {
+		} elseif ( defined( 'GITHUB_TOKEN' ) ) {
 			$this->token = GITHUB_TOKEN;
 		} else {
 			$this->token = '';
 		}
 		
-		$theme = wp_get_theme($this->theme_slug);
+		$theme         = wp_get_theme( $this->theme_slug );
 		$this->version = $theme->parent()
-			? $theme->parent()->get('Version')
-			: $theme->get('Version');
+											? $theme->parent()->get( 'Version' )
+											: $theme->get( 'Version' );
 		
-		$branch = $config['branch'] ?? 'main';
+		$branch           = $config['branch'] ?? 'main';
 		$this->github_api = "https://api.github.com/repos/{$this->github_user}/{$this->github_repo}/releases/latest";
 		$this->github_zip = "https://github.com/{$this->github_user}/{$this->github_repo}/archive/refs/heads/{$branch}.zip";
 		
-		add_filter('pre_set_site_transient_update_themes', [$this, 'check_theme_updates']);
+		add_filter( 'pre_set_site_transient_update_themes', [ $this, 'check_theme_updates' ] );
 	}
 	
 	public function check_theme_updates( $transient ) {
@@ -77,8 +78,6 @@ class WP_Theme_Updater {
 				return $transient;
 			}
 			
-			error_log( '[WP_Theme_Updater] Update available. Adding update package URL.' );
-			
 			$transient->response[ $this->theme_slug ] = [
 				'theme'       => $this->theme_slug,
 				'new_version' => $remote_version,
@@ -95,19 +94,19 @@ class WP_Theme_Updater {
 }
 
 
-if ( ! function_exists('wp_custom_theme_update') ) {
+if ( ! function_exists( 'wp_custom_theme_update' ) ) {
 	/**
 	 * Check for updates
 	 * @return void
 	 */
 	function wp_custom_theme_update() {
-		new WP_Theme_Updater([
+		new WP_Theme_Updater( [
 			'theme_slug'  => 'wp-theme',
 			'github_user' => 'DenisStetsenko',
 			'github_repo' => 'wp-theme',
 			'branch'      => 'main',
 			'is_private'  => false
-		]);
+		] );
 	}
 }
 add_action( 'after_setup_theme', 'wp_custom_theme_update' );

@@ -42,11 +42,11 @@ class WP_Theme_Updater {
 		$this->github_api = "https://api.github.com/repos/{$this->github_user}/{$this->github_repo}/releases/latest";
 		$this->github_zip = "https://github.com/{$this->github_user}/{$this->github_repo}/archive/refs/tags/";
 		
-		add_filter('http_request_args', [$this, 'add_auth_header'], 10, 2);
+		add_filter( 'http_request_args', [ $this, 'add_auth_header' ], 10, 2 );
 		add_filter( 'pre_set_site_transient_update_themes', [ $this, 'check_theme_updates' ] );
 		add_filter( 'upgrader_post_install', [ $this, 'fix_theme_directory' ], 10, 3 );
 		
-		add_action('upgrader_process_complete', [$this, 'restore_active_theme'], 10, 2);
+		add_action( 'upgrader_process_complete', [ $this, 'restore_active_theme' ], 10, 2 );
 	}
 	
 	/**
@@ -82,7 +82,6 @@ class WP_Theme_Updater {
 	 * @param $transient
 	 *
 	 * @return mixed
-	 * @throws JsonException
 	 */
 	public function check_theme_updates( $transient ) {
 		if ( empty( $transient->checked[ $this->theme_slug ] ) ) {
@@ -145,8 +144,6 @@ class WP_Theme_Updater {
 				'package'     => $package_url
 			];
 			
-		} else {
-			error_log( "[WP_Theme_Updater] No update available for theme '{$this->theme_slug}'." );
 		}
 		
 		return $transient;
@@ -209,8 +206,6 @@ class WP_Theme_Updater {
 		wp_clean_themes_cache();
 		delete_site_transient( 'update_themes' );
 		
-		error_log("[WP_Theme_Updater] Theme folder replaced successfully: {$this->theme_slug}");
-		
 		return $response;
 	}
 	
@@ -242,8 +237,6 @@ class WP_Theme_Updater {
 			switch_theme( $this->theme_slug );
 			wp_clean_themes_cache();
 			delete_site_transient('update_themes');
-			
-			error_log("[WP_Theme_Updater] Restored active theme to {$this->theme_slug}");
 		}
 	}
 	

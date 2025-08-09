@@ -89,42 +89,49 @@ class WP_Theme_Updater {
 	 */
 	public function check_theme_updates( $transient ) {
 		if ( empty( $transient->checked[ $this->theme_slug ] ) ) {
-			error_log( "[WP_Theme_Updater] No checked version found for theme '{$this->theme_slug}', skipping update check." );
 			return $transient;
 		}
 		
-		$args = [
-			'headers' => [
-				'Accept'     => 'application/vnd.github.v3+json',
-				'User-Agent' => 'WordPress Theme Updater'
-			],
-			'timeout' => 20,
-		];
-		if ( ! empty( $this->token ) ) {
-			$args['headers']['Authorization'] = 'token ' . $this->token;
-		}
+		// Cache API response for 10 minutes (adjust duration as needed).
+		$cache_key  = 'wp_github_theme_update_' . $this->theme_slug;
+		$data       = get_transient( $cache_key );
 		
-		$response = wp_remote_get( $this->github_api, $args );
-		if ( is_wp_error( $response ) ) {
-			error_log( '[WP_Theme_Updater] Error fetching GitHub API: ' . $response->get_error_message() );
-			return $transient;
-		}
-		
-		if ( wp_remote_retrieve_response_code( $response ) === 403 ) {
-			error_log( '[WP_Theme_Updater] GitHub API rate limit exceeded.' );
-			return $transient;
-		}
-		
-		try {
-			$data = json_decode( wp_remote_retrieve_body( $response ), true, 512, JSON_THROW_ON_ERROR );
-		} catch ( JsonException $e ) {
-			error_log( '[WP_Theme_Updater] JSON decode error: ' . $e->getMessage() );
-			return $transient;
-		}
-		
-		if ( empty( $data ) || ! is_array( $data ) ) {
-			error_log('[WP_Theme_Updater] Empty or invalid GitHub API response.');
-			return $transient;
+		if ( false === $data ) {
+			$args = [
+				'headers' => [
+					'Accept'     => 'application/vnd.github.v3+json',
+					'User-Agent' => 'WordPress Theme Updater'
+				],
+				'timeout' => 20,
+			];
+			if ( ! empty( $this->token ) ) {
+				$args['headers']['Authorization'] = 'token ' . $this->token;
+			}
+			
+			$response = wp_remote_get( $this->github_api, $args );
+			if ( is_wp_error( $response ) ) {
+				error_log( '[WP_Theme_Updater] Error fetching GitHub API: ' . $response->get_error_message() );
+				return $transient;
+			}
+			
+			if ( wp_remote_retrieve_response_code( $response ) === 403 ) {
+				error_log( '[WP_Theme_Updater] GitHub API rate limit exceeded.' );
+				return $transient;
+			}
+			
+			try {
+				$data = json_decode( wp_remote_retrieve_body( $response ), true, 512, JSON_THROW_ON_ERROR );
+			} catch ( JsonException $e ) {
+				error_log( '[WP_Theme_Updater] JSON decode error: ' . $e->getMessage() );
+				return $transient;
+			}
+			
+			if ( empty( $data ) || ! is_array( $data ) ) {
+				error_log('[WP_Theme_Updater] Empty or invalid GitHub API response.');
+				return $transient;
+			}
+			
+			set_transient( $cache_key, $data, 10 * MINUTE_IN_SECONDS );
 		}
 		
 		if ( empty( $data['tag_name'] ) ) {
@@ -165,7 +172,14 @@ class WP_Theme_Updater {
 	 */
 	public function disable_native_wp_update_check( $request, $url ) {
 		if ( str_contains( $url, '//api.wordpress.org/themes/update-check/1.1/' ) ) {
-			$data = json_decode( $request['body']['themes'], false, 512, JSON_THROW_ON_ERROR );
+			
+			try {
+				$data = json_decode( $request['body']['themes'], false, 512, JSON_THROW_ON_ERROR );
+			} catch ( JsonException $e ) {
+				error_log( '[WP_Theme_Updater] JSON decode error: ' . $e->getMessage() );
+				return $request;
+			}
+			
 			unset( $data->themes->{$this->theme_slug} );
 			$request['body']['themes'] = wp_json_encode( $data );
 		}
@@ -278,6 +292,7 @@ class WP_Theme_Updater {
 		global $pagenow;
 		
 		if ( 'update-core.php' === $pagenow && isset($_GET['force-check']) ) {
+			delete_transient( 'wp_github_theme_update_' . $this->theme_slug );
 			$this->clear_transient();
 		} elseif ( 'themes.php' === $pagenow ) {
 			$this->clear_transient();

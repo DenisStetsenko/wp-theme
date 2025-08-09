@@ -36,8 +36,8 @@ class WP_Theme_Updater {
 		
 		$theme         = wp_get_theme( $this->theme_slug );
 		$this->version = $theme->parent()
-			? $theme->parent()->get( 'Version' )
-			: $theme->get( 'Version' );
+											? $theme->parent()->get( 'Version' )
+											: $theme->get( 'Version' );
 		
 		$this->github_api = "https://api.github.com/repos/{$this->github_user}/{$this->github_repo}/releases/latest";
 		$this->github_zip = "https://github.com/{$this->github_user}/{$this->github_repo}/archive/refs/tags/";

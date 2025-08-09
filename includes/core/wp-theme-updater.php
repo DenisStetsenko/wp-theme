@@ -21,10 +21,10 @@ class WP_Theme_Updater {
 	private bool $is_private;
 	
 	public function __construct( array $config ) {
-		$this->theme_slug  = $config['theme_slug'] ?? '';
+		$this->theme_slug  = $config['theme_slug']  ?? '';
 		$this->github_user = $config['github_user'] ?? '';
 		$this->github_repo = $config['github_repo'] ?? '';
-		$this->is_private  = $config['is_private'] ?? false;
+		$this->is_private  = $config['is_private']  ?? false;
 		
 		if ( ! empty( $config['token'] ) ) {
 			$this->token = $config['token'];
@@ -40,10 +40,11 @@ class WP_Theme_Updater {
 			: $theme->get( 'Version' );
 		
 		$this->github_api = "https://api.github.com/repos/{$this->github_user}/{$this->github_repo}/releases/latest";
-		$this->github_zip = "https://github.com/{$github_user}/{$github_repo}/archive/refs/tags/";
+		$this->github_zip = "https://github.com/{$this->github_user}/{$this->github_repo}/archive/refs/tags/";
 		
 		add_filter( 'pre_set_site_transient_update_themes', [ $this, 'check_theme_updates' ] );
-		add_filter( 'upgrader_source_selection', [ $this, 'rename_theme_folder' ], 10, 3 );
+		
+		add_filter( 'upgrader_post_install', [ $this, 'rename_theme_folder_after_install' ], 10, 3 );
 	}
 	
 	/**
@@ -88,7 +89,7 @@ class WP_Theme_Updater {
 		
 		$new_version = ltrim( $data['tag_name'], 'v' );
 		if ( version_compare( $this->version, $new_version, '<' ) ) {
-			$package_url = $data->zipball_url ?? ($this->github_zip . $data->tag_name . '.zip');
+			$package_url = $data['zipball_url'] ?? ($this->github_zip . $data['tag_name'] . '.zip');
 			
 			if ( empty( $package_url ) || ! filter_var( $package_url, FILTER_VALIDATE_URL ) ) {
 				error_log( 'Invalid GitHub package URL: ' . $package_url );
@@ -110,21 +111,29 @@ class WP_Theme_Updater {
 	}
 	
 	
-	/**
-	 * Rename the extracted folder from <repo>-<branch> to your $theme_slug
-	 */
-	public function rename_theme_folder( $source, $remote_source, $upgrader ) {
+	public function rename_theme_folder_after_install( $true, $hook_extra, $result ) {
 		global $wp_filesystem;
 		
-		if ( isset( $upgrader->skin->theme ) && $upgrader->skin->theme === $this->theme_slug ) {
-			$new_source = trailingslashit( $remote_source ) . $this->theme_slug;
+		if ( ! $wp_filesystem ) {
+			require_once( ABSPATH . 'wp-admin/includes/file.php' );
+			WP_Filesystem();
+		}
+		
+		if (
+			isset( $hook_extra['type'], $hook_extra['theme'] ) &&
+			$hook_extra['type'] === 'theme' &&
+			$hook_extra['theme'] === $this->theme_slug
+		) {
+			$install_path = $result['destination'];
+			$correct_path = WP_CONTENT_DIR . '/themes/' . $this->theme_slug;
 			
-			if ( $wp_filesystem->move( $source, $new_source ) ) {
-				return $new_source;
+			if ( $install_path !== $correct_path ) {
+				$wp_filesystem->move( $install_path, $correct_path );
+				return ['destination' => $correct_path];
 			}
 		}
 		
-		return $source;
+		return $true;
 	}
 	
 }
@@ -139,8 +148,7 @@ if ( ! function_exists( 'wp_custom_theme_update' ) ) {
 		new WP_Theme_Updater( [
 			'theme_slug'  => 'wp-theme',
 			'github_user' => 'DenisStetsenko',
-			'github_repo' => 'wp-theme',
-			'is_private'  => false
+			'github_repo' => 'wp-theme'
 		] );
 	}
 }

@@ -44,7 +44,7 @@ class WP_Theme_Updater {
 		
 		add_filter( 'pre_set_site_transient_update_themes', [ $this, 'check_theme_updates' ] );
 		
-		add_filter( 'upgrader_post_install', [ $this, 'rename_theme_folder_after_install' ], 10, 3 );
+		add_filter( 'upgrader_post_install', [ $this, 'post_install' ], 10, 3 );
 	}
 	
 	/**
@@ -89,7 +89,12 @@ class WP_Theme_Updater {
 		
 		$new_version = ltrim( $data['tag_name'], 'v' );
 		if ( version_compare( $this->version, $new_version, '<' ) ) {
-			$package_url = $data['zipball_url'] ?? ($this->github_zip . $data['tag_name'] . '.zip');
+			
+			if ( $this->is_private && ! empty( $this->token ) ) {
+				$package_url = add_query_arg( 'access_token', $this->token, $data['zipball_url'] );
+			} else {
+				$package_url = $data['zipball_url'] ?? ($this->github_zip . $data['tag_name'] . '.zip');
+			}
 			
 			if ( empty( $package_url ) || ! filter_var( $package_url, FILTER_VALIDATE_URL ) ) {
 				error_log( 'Invalid GitHub package URL: ' . $package_url );
@@ -110,30 +115,47 @@ class WP_Theme_Updater {
 		return $transient;
 	}
 	
-	
-	public function rename_theme_folder_after_install( $true, $hook_extra, $result ) {
-		global $wp_filesystem;
+	/**
+	 * Rename wp-theme
+	 * @param $response
+	 * @param $hook_extra
+	 * @param $result
+	 *
+	 * @return mixed
+	 */
+	public function post_install( $response, $hook_extra, $result ) {
+		if ( ( $hook_extra['theme'] ?? false ) !== $this->theme_slug ) {
+			return $response;
+		}
 		
+		global $wp_filesystem;
 		if ( ! $wp_filesystem ) {
 			require_once( ABSPATH . 'wp-admin/includes/file.php' );
 			WP_Filesystem();
 		}
 		
-		if (
-			isset( $hook_extra['type'], $hook_extra['theme'] ) &&
-			$hook_extra['type'] === 'theme' &&
-			$hook_extra['theme'] === $this->theme_slug
-		) {
-			$install_path = $result['destination'];
-			$correct_path = WP_CONTENT_DIR . '/themes/' . $this->theme_slug;
-			
-			if ( $install_path !== $correct_path ) {
-				$wp_filesystem->move( $install_path, $correct_path );
-				return ['destination' => $correct_path];
+		$theme_folder = rtrim( wp_normalize_path( WP_CONTENT_DIR . '/themes/' . $this->theme_slug ), '/' );
+		$dest_folder  = rtrim( wp_normalize_path( $result['destination'] ), '/' );
+		
+		if ( $dest_folder !== $theme_folder ) {
+			$moved = $wp_filesystem->move( $dest_folder, $theme_folder );
+			if ( ! $moved ) {
+				error_log("[WP_Theme_Updater] Failed to rename theme folder from $dest_folder to $theme_folder");
+				return $response;
 			}
 		}
 		
-		return $true;
+		$current_theme = wp_get_theme();
+		if ( $current_theme->parent() && $current_theme->get_stylesheet() !== $this->theme_slug ) {
+			// Parent theme updated, child active: do not switch.
+			error_log( "[WP_Theme_Updater]  Parent theme updated, child active: do not switch. {$this->theme_slug}" );
+			
+		} else if ( $current_theme->get_stylesheet() !== $this->theme_slug ) {
+			switch_theme( $this->theme_slug );
+			error_log( "[WP_Theme_Updater] Switched active theme to {$this->theme_slug}" );
+		}
+		
+		return $response;
 	}
 	
 }

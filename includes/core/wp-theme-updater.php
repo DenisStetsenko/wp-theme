@@ -115,7 +115,11 @@ class WP_Theme_Updater {
 			}
 			
 			if ( wp_remote_retrieve_response_code( $response ) === 403 ) {
-				error_log( '[WP_Theme_Updater] GitHub API rate limit exceeded.' );
+				$reset_time = wp_remote_retrieve_header($response, 'x-ratelimit-reset');
+				error_log(sprintf(
+					'[WP_Theme_Updater] GitHub API rate limit exceeded. Resets at: %s',
+					date('Y-m-d H:i:s', $reset_time)
+				));
 				return $transient;
 			}
 			

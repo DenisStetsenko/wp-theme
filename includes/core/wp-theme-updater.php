@@ -37,7 +37,7 @@ class WP_Theme_Updater {
 	private bool    $is_private;
 	
 	// Use Private constructor to all only instance via ::getInstance()
-	private function __construct( array $config ) {
+	private function __construct( array $config = [] ) {
 		
 		if ( defined( 'WP_DISABLE_PARENT_THEME_UPDATE' ) && WP_DISABLE_PARENT_THEME_UPDATE ) {
 			return;
@@ -64,14 +64,15 @@ class WP_Theme_Updater {
 		$this->github_api = "https://api.github.com/repos/{$this->github_user}/{$this->github_repo}/releases/latest";
 		$this->github_zip = "https://github.com/{$this->github_user}/{$this->github_repo}/archive/refs/tags/";
 		
+		// Validate repository and releases exist before proceeding
+		if ( ! $this->validate_repository() ) {
+			//error_log( "[WP_Theme_Updater] Repository validation failed for {$this->github_user}/{$this->github_repo}" );
+			return;
+		}
+		
 		// Register hooks only in appropriate contexts
 		if ( is_admin() || wp_doing_ajax() || wp_doing_cron() ) {
-			add_filter( 'http_request_args', [ $this, 'disable_native_wp_update_check' ], 5, 2 );
-			add_filter( 'http_request_args', [ $this, 'add_auth_header' ], 10, 2 );
-			add_filter( 'pre_set_site_transient_update_themes', [ $this, 'check_theme_updates' ] );
-			add_filter( 'upgrader_post_install', [ $this, 'fix_theme_directory' ], 10, 3 );
-			
-			add_action( 'upgrader_process_complete', [ $this, 'restore_active_theme' ], 10, 2 );
+			$this->register_hooks();
 		}
 		
 		// Deletes our transients if we're force-checking the updater
@@ -97,6 +98,18 @@ class WP_Theme_Updater {
 		}
 		
 		return self::$instance;
+	}
+	
+	
+	/**
+	 * Register WordPress hooks
+	 */
+	private function register_hooks(): void {
+		add_filter( 'http_request_args', [ $this, 'disable_native_wp_update_check' ], 5, 2 );
+		add_filter( 'http_request_args', [ $this, 'add_auth_header' ], 10, 2 );
+		add_filter( 'pre_set_site_transient_update_themes', [ $this, 'check_theme_updates' ] );
+		add_filter( 'upgrader_post_install', [ $this, 'fix_theme_directory' ], 10, 3 );
+		add_action( 'upgrader_process_complete', [ $this, 'restore_active_theme' ], 10, 2 );
 	}
 	
 	
@@ -135,6 +148,79 @@ class WP_Theme_Updater {
 		}
 		
 		return $default;
+	}
+	
+	
+	/**
+	 * Validate GitHub repository and check if releases exist
+	 */
+	private function validate_repository(): bool {
+		$cache_key      = 'wp_github_theme_repository_' . $this->theme_slug;
+		$cached_result  = get_transient( $cache_key );
+		
+		if ( $cached_result !== false ) {
+			return (bool) $cached_result;
+		}
+		
+		$args = [
+			'headers' => [
+				'Accept'     => 'application/vnd.github.v3+json',
+				'User-Agent' => 'WordPress Theme Updater'
+			],
+			'timeout' => self::API_TIMEOUT,
+		];
+		if ( ! empty( $this->token ) ) {
+			$args['headers']['Authorization'] = 'Bearer ' . $this->token;
+		}
+		
+		$response = wp_remote_get( $this->github_api, $args );
+		if ( is_wp_error( $response ) ) {
+			error_log( '[WP_Theme_Updater] Error checking repository.' );
+			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 10 minutes
+			return false;
+		}
+		
+		$response_code = wp_remote_retrieve_response_code( $response );
+		
+		if ( $response_code === 403 ) {
+			error_log( '[WP_Theme_Updater] Repository validation failed - rate limited or no access' );
+			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 10 minutes
+			return false;
+		}
+		
+		if ( $response_code !== 200 ) {
+			error_log( "[WP_Theme_Updater] Repository check failed with status: {$response_code}" );
+			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 10 minutes
+			return false;
+		}
+		
+		try {
+			$data = json_decode( wp_remote_retrieve_body( $response ), true, 512, JSON_THROW_ON_ERROR );
+			
+			if ( empty( $data['tag_name'] ) ) {
+				error_log( '[WP_Theme_Updater] Release data missing tag_name' );
+				$this->cache_validation_result( $cache_key, false, HOUR_IN_SECONDS ); // Longer cache for "no releases"
+				return false;
+			}
+			
+		} catch ( JsonException ) {
+			error_log( '[WP_Theme_Updater] Invalid JSON in repository response.' );
+			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 10 minutes
+			return false;
+		}
+		
+		
+		// Success - cache for longer
+		$this->cache_validation_result( $cache_key, true, 12 * HOUR_IN_SECONDS );
+		return true;
+	}
+	
+	
+	/**
+	 * Cache validation result with appropriate duration
+	 */
+	private function cache_validation_result( string $cache_key, bool $result, int $duration ): void {
+		set_transient( $cache_key, $result ? 1 : 0, $duration );
 	}
 	
 	
@@ -355,9 +441,9 @@ class WP_Theme_Updater {
 	 * @return void
 	 */
 	public function restore_active_theme($upgrader, $hook_extra) {
-		if ( isset($hook_extra['type'], $hook_extra['themes'])
+		if ( isset( $hook_extra['type'], $hook_extra['themes'] )
 		     && $hook_extra['type'] === 'theme'
-		     && in_array($this->theme_slug, (array) $hook_extra['themes'], true) ) {
+		     && in_array( $this->theme_slug, (array) $hook_extra['themes'], true ) ) {
 			
 			$current = get_option('stylesheet');
 			if ( $current === $this->theme_slug ) {
@@ -382,6 +468,8 @@ class WP_Theme_Updater {
 	 * Clears our transient and object cache after updating
 	 */
 	public function clear_transient(): void {
+		delete_transient( 'wp_github_theme_update_' . $this->theme_slug );
+		delete_transient( 'wp_github_theme_repository_' . $this->theme_slug );
 		delete_site_transient('update_themes');
 		wp_cache_delete('update_themes', 'site-transient');
 		wp_clean_themes_cache();
@@ -394,9 +482,7 @@ class WP_Theme_Updater {
 		global $pagenow;
 		
 		if ( 'update-core.php' === $pagenow && isset($_GET['force-check']) ) {
-			delete_transient( 'wp_github_theme_update_' . $this->theme_slug );
 			$this->clear_transient();
-			
 		} elseif ( 'themes.php' === $pagenow && current_user_can('update_themes') ) {
 			$this->clear_transient();
 		}

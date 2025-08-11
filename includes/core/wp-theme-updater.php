@@ -66,7 +66,6 @@ class WP_Theme_Updater {
 		
 		// Validate repository and releases exist before proceeding
 		if ( ! $this->validate_repository() ) {
-			//error_log( "[WP_Theme_Updater] Repository validation failed for {$this->github_user}/{$this->github_repo}" );
 			return;
 		}
 		

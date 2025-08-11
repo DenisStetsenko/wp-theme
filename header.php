@@ -19,12 +19,12 @@
 	<!-- Eliminate render-blocking resources google fonts FIX -->
 	<link
 			rel="preload"
-			href="<?php echo wp_custom_google_fonts_url() ?>"
+			href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap"
 			as="style"
 			onload="this.onload=null;this.rel='stylesheet'">
 	<noscript>
 		<link
-				href="<?php echo wp_custom_google_fonts_url() ?>"
+				href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap"
 				rel="stylesheet"
 				type="text/css">
 	</noscript>

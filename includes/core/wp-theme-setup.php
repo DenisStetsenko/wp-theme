@@ -74,7 +74,7 @@ if ( ! function_exists('wp_custom_theme_setup') ) {
 	  $editor_stylesheet_path = 'assets/styles/css/editor-style.css';
 	  $editor_stylesheet_uri  = get_theme_file_uri( $editor_stylesheet_path ) . '?ver=' . filemtime( get_theme_file_path( $editor_stylesheet_path ) );
 	  
-		add_editor_style( [ wp_custom_google_fonts_url(), $editor_stylesheet_uri ] );
+		add_editor_style( [ 'https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap', $editor_stylesheet_uri ] );
 
     // remove render gutenberg svg_filters junk
     remove_action( 'wp_body_open', 'wp_global_styles_render_svg_filters' );

@@ -332,7 +332,7 @@ class WP_Theme_Updater {
 			$transient->response[ $this->theme_slug ] = [
 				'theme'       => $this->theme_slug,
 				'new_version' => $new_version,
-				'url'         => $data['html_url'] ?? '',
+				'url'         => '',
 				'package'     => $package_url
 			];
 			

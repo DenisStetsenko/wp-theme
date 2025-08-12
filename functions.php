@@ -8,15 +8,6 @@ include get_theme_file_path('/includes/core/wp-theme-setup.php');
 // WordPress Security
 include get_theme_file_path('/includes/core/wp-security.php');
 
-// WordPress Helpers
-include get_theme_file_path('/includes/core/wp-helpers.php');
-
-// WordPress Editor Customizer
-include get_theme_file_path('/includes/core/wp-tinymce-editor.php');
-
-// Load Hero Icons
-include get_theme_file_path('/includes/core/wp-hero-icons.php');
-
 
 if ( ! function_exists( 'wp_custom_scripts_and_styles' ) ) {
 	/**

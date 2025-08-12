@@ -15,22 +15,17 @@
 	<div class="entry-content">
 		<?php
 		if ( has_post_thumbnail() ) {
-			the_post_thumbnail('large', [ 'class' => 'post-thumbnail' ] );
+			the_post_thumbnail('large', array( 'class' => 'post-thumbnail' ) );
 		}
 
 		the_content();
 
-		// If comments are open or we have at least one comment, load up the comment template.
-		if ( comments_open() || get_comments_number() ) {
-			comments_template();
-		}
-
-		wp_link_pages([
-				'before'   => '<nav class="page-links" aria-label="' . esc_attr__( 'Page', 'wp-theme' ) . '">',
-				'after'    => '</nav>',
-				/* translators: %: Page number. */
-				'pagelink' => esc_html__( 'Page %', 'wp-theme' ),
-			]);
+		wp_link_pages( array(
+			'before'   => '<nav class="page-links" aria-label="' . esc_attr__( 'Page', 'wp-theme' ) . '">',
+			'after'    => '</nav>',
+			/* translators: %: Page number. */
+			'pagelink' => esc_html__( 'Page %', 'wp-theme' ),
+		));
 
 		the_tags( '<div class="post-tags">', ', ', '</div>' );
 		?>

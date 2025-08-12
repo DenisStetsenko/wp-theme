@@ -1,9 +1,10 @@
 /*
 Theme Name: WP Theme
+Theme URI: https://wordpress.com/
 Author: WordPress
 Author URI: https://wordpress.com/
-Description: Starter WordPress Theme.
-Version: 1.0.2
+Description: WordPress Starter Theme.
+Version: 1.0.3
 License: GNU General Public License v2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Requires at least: 6.0
@@ -13,3 +14,57 @@ Text Domain: wp-theme
 Tags: blog, custom-colors, custom-logo, custom-header, custom-menu
 Copyright: (c) 2025 Your Name. This theme is licensed under the GPL.
 */
+
+.wp-caption {
+  max-width: 100%;
+  padding: 0.5em;
+  background: #f4f4f4;
+  border: 1px solid #ddd;
+  text-align: center;
+}
+
+.wp-caption-text {
+  font-size: 0.9em;
+  color: #555;
+}
+
+.sticky {
+  font-weight: bold;
+}
+
+.gallery-caption {
+  font-style: italic;
+  font-size: 0.9em;
+}
+
+.bypostauthor {
+  font-weight: bold;
+}
+
+.alignright {
+  float: right;
+  margin-left: 1.5em;
+}
+
+.alignleft {
+  float: left;
+  margin-right: 1.5em;
+}
+
+.aligncenter {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.screen-reader-text {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+}

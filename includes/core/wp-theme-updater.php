@@ -182,7 +182,11 @@ class WP_Theme_Updater {
 		$response_code = wp_remote_retrieve_response_code( $response );
 		
 		if ( $response_code === 403 ) {
-			error_log( '[WP_Theme_Updater] Repository validation failed - rate limited or no access' );
+			error_log(sprintf(
+				'[WP_Theme_Updater] GitHub API rate limit of "%1$d" requests exceeded. Limit resets at %2$s UTC timezone.',
+				wp_remote_retrieve_header($response, 'x-ratelimit-limit'),
+				date('F j, Y H:i:s', wp_remote_retrieve_header($response, 'x-ratelimit-reset'))
+			));
 			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 10 minutes
 			return false;
 		}
@@ -287,10 +291,10 @@ class WP_Theme_Updater {
 			$response_code =  wp_remote_retrieve_response_code( $response );
 			
 			if ( $response_code === 403 ) {
-				$reset_time = wp_remote_retrieve_header($response, 'x-ratelimit-reset');
 				error_log(sprintf(
-					'[WP_Theme_Updater] GitHub API rate limit exceeded. Resets at: %s',
-					date('Y-m-d H:i:s', $reset_time)
+					'[WP_Theme_Updater] GitHub API rate limit of "%1$d" requests exceeded. Limit resets at %2$s UTC timezone.',
+					wp_remote_retrieve_header($response, 'x-ratelimit-limit'),
+					date('F j, Y H:i:s', wp_remote_retrieve_header($response, 'x-ratelimit-reset'))
 				));
 				return $transient;
 			}

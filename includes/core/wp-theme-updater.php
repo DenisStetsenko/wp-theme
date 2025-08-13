@@ -161,6 +161,26 @@ class WP_Theme_Updater {
 			return (bool) $cached_result;
 		}
 		
+		// Only make API calls on specific admin pages
+		if ( is_admin() && ! wp_doing_ajax() && ! wp_doing_cron() ) {
+			global $pagenow;
+			
+			// Only load when user is actively checking updates
+			$allowed_pages = [
+				'update-core.php', // WordPress Updates page
+				'admin-ajax.php'   // AJAX requests
+			];
+			
+			// For themes.php, only load when forcing check
+			if ( $pagenow === 'themes.php' && ! isset( $_GET['force-check'] ) ) {
+				return true; // Assume valid, don't make API call
+			}
+			
+			if ( $pagenow !== 'themes.php' && ! in_array( $pagenow, $allowed_pages, true ) ) {
+				return true; // Assume valid, don't make API call
+			}
+		}
+		
 		$args = [
 			'headers' => [
 				'Accept'     => 'application/vnd.github.v3+json',
@@ -525,4 +545,12 @@ if ( ! function_exists( 'wp_custom_theme_update' ) ) {
 		
 	}
 }
-add_action( 'after_setup_theme', 'wp_custom_theme_update' );
+// Use admin_init hook that runs after $pagenow is available
+add_action( 'admin_init', 'wp_custom_theme_update' );
+
+// Also hook into cron for automatic background checks
+add_action( 'wp_loaded', function() {
+	if ( wp_doing_cron() ) {
+		wp_custom_theme_update();
+	}
+});

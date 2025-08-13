@@ -195,6 +195,14 @@ class WP_Theme_Updater {
 		$rate_remaining = isset($headers['x-ratelimit-remaining'])  ? (int) $headers['x-ratelimit-remaining'] : null;
 		$rate_reset     = isset($headers['x-ratelimit-reset'])      ? date('F j, Y H:i:s', (int) $headers['x-ratelimit-reset']) : null;
 		
+		
+		error_log(sprintf(
+			'[WP_Theme_Updater] GitHub API rate limit is currently: %1$d/%2$d, resets at %3$s UTC',
+			$rate_remaining,
+			$rate_limit,
+			$rate_reset
+		));
+		
 		if ( $rate_remaining !== null && $rate_remaining < 3 ) {
 			error_log(sprintf(
 				'[WP_Theme_Updater] GitHub API rate limit almost exceed and currently: %1$d/%2$d, resets at %3$s UTC',

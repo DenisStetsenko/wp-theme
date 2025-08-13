@@ -195,7 +195,7 @@ class WP_Theme_Updater {
 		$rate_remaining = isset($headers['x-ratelimit-remaining'])  ? (int) $headers['x-ratelimit-remaining'] : null;
 		$rate_reset     = isset($headers['x-ratelimit-reset'])      ? date('F j, Y H:i:s', (int) $headers['x-ratelimit-reset']) : null;
 		
-		if ( $rate_remaining !== null && $rate_remaining < 3 ) {
+		if ( $rate_remaining !== null && $rate_remaining <= 1 ) {
 			error_log(sprintf(
 				'[WP_Theme_Updater] GitHub API rate limit almost exceed and currently: %1$d/%2$d, resets at %3$s UTC',
 				$rate_remaining,
@@ -316,12 +316,15 @@ class WP_Theme_Updater {
 			}
 			
 			$response_code =  wp_remote_retrieve_response_code( $response );
+			$headers        = wp_remote_retrieve_headers($response);
+			$rate_limit     = isset($headers['x-ratelimit-limit'])      ? (int) $headers['x-ratelimit-limit']     : null;
+			$rate_reset     = isset($headers['x-ratelimit-reset'])      ? date('F j, Y H:i:s', (int) $headers['x-ratelimit-reset']) : null;
 			
 			if ( $response_code === 403 ) {
 				error_log(sprintf(
 					'[WP_Theme_Updater] GitHub API rate limit of "%1$d" requests exceeded. Limit resets at %2$s UTC timezone.',
-					(int) wp_remote_retrieve_header($response, 'x-ratelimit-limit'),
-					date('F j, Y H:i:s', (int) wp_remote_retrieve_header($response, 'x-ratelimit-reset'))
+					$rate_limit,
+					$rate_reset
 				));
 				return $transient;
 			}

@@ -22,10 +22,6 @@ class WP_Theme_Updater {
 	// Added static instance for singleton pattern (prevents memory leaks)
 	private static ?self $instance = null;
 	
-	// Constants
-	private const CACHE_DURATION  = 1800; // 30 minutes
-	private const API_TIMEOUT     = 30;
-	
 	// Vars
 	private string  $theme_slug;
 	private string  $github_user;
@@ -197,7 +193,7 @@ class WP_Theme_Updater {
 					'Accept'     => 'application/vnd.github.v3+json',
 					'User-Agent' => 'WordPress Theme Updater'
 				],
-				'timeout' => self::API_TIMEOUT,
+				'timeout' => 30,
 			];
 			if ( ! empty( $this->token ) ) {
 				$args['headers']['Authorization'] = 'Bearer ' . $this->token;
@@ -413,7 +409,6 @@ class WP_Theme_Updater {
 	 */
 	public function clear_transient(): void {
 		delete_transient( 'wp_github_theme_update_' . $this->theme_slug );
-		delete_transient( 'wp_github_theme_repository_' . $this->theme_slug );
 		delete_site_transient('update_themes');
 		wp_cache_delete('update_themes', 'site-transient');
 		wp_clean_themes_cache();

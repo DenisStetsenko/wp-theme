@@ -23,7 +23,7 @@ class WP_Theme_Updater {
 	private static ?self $instance = null;
 	
 	// Constants
-	private const CACHE_DURATION  = 600; // 10 minutes
+	private const CACHE_DURATION  = 1800; // 30 minutes
 	private const API_TIMEOUT     = 30;
 	
 	// Vars
@@ -161,22 +161,11 @@ class WP_Theme_Updater {
 			return (bool) $cached_result;
 		}
 		
-		// Only make API calls on specific admin pages
-		if ( is_admin() && ! wp_doing_ajax() && ! wp_doing_cron() ) {
+		// Only load when force-checking on update-core.php
+		if ( is_admin() && ! wp_doing_ajax() ) {
 			global $pagenow;
 			
-			// Only load when user is actively checking updates
-			$allowed_pages = [
-				'update-core.php', // WordPress Updates page
-				'admin-ajax.php'   // AJAX requests
-			];
-			
-			// For themes.php, only load when forcing check
-			if ( $pagenow === 'themes.php' && ! isset( $_GET['force-check'] ) ) {
-				return true; // Assume valid, don't make API call
-			}
-			
-			if ( $pagenow !== 'themes.php' && ! in_array( $pagenow, $allowed_pages, true ) ) {
+			if ( 'update-core.php' !== $pagenow || ! isset($_GET['force-check']) ) {
 				return true; // Assume valid, don't make API call
 			}
 		}
@@ -188,6 +177,7 @@ class WP_Theme_Updater {
 			],
 			'timeout' => self::API_TIMEOUT,
 		];
+		
 		if ( ! empty( $this->token ) ) {
 			$args['headers']['Authorization'] = 'Bearer ' . $this->token;
 		}
@@ -195,25 +185,42 @@ class WP_Theme_Updater {
 		$response = wp_remote_get( $this->github_api, $args );
 		if ( is_wp_error( $response ) ) {
 			error_log( '[WP_Theme_Updater] Error checking repository.' );
-			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 10 minutes
+			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 30 minutes
 			return false;
 		}
 		
 		$response_code = wp_remote_retrieve_response_code( $response );
+		$headers        = wp_remote_retrieve_headers($response);
+		$rate_limit     = isset($headers['x-ratelimit-limit'])      ? (int) $headers['x-ratelimit-limit']     : null;
+		$rate_remaining = isset($headers['x-ratelimit-remaining'])  ? (int) $headers['x-ratelimit-remaining'] : null;
+		$rate_reset     = $headers['x-ratelimit-reset']             ? date('F j, Y H:i:s', (int) $headers['x-ratelimit-reset']) : null;
+		
+		if ( $rate_remaining !== null && $rate_remaining < 3 ) {
+			error_log(sprintf(
+				'[WP_Theme_Updater] GitHub API rate limit almost exceed and currently: %1$d/%2$d, resets at %3$s UTC',
+				$rate_remaining,
+				$rate_limit,
+				$rate_reset
+			));
+			
+			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 30 minutes
+			return false;
+		}
 		
 		if ( $response_code === 403 ) {
 			error_log(sprintf(
 				'[WP_Theme_Updater] GitHub API rate limit of "%1$d" requests exceeded. Limit resets at %2$s UTC timezone.',
-				wp_remote_retrieve_header($response, 'x-ratelimit-limit'),
-				date('F j, Y H:i:s', wp_remote_retrieve_header($response, 'x-ratelimit-reset'))
+				$rate_limit,
+				$rate_reset
 			));
-			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 10 minutes
+			
+			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 30 minutes
 			return false;
 		}
 		
 		if ( $response_code !== 200 ) {
 			error_log( "[WP_Theme_Updater] Repository check failed with status: {$response_code}" );
-			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 10 minutes
+			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 30 minutes
 			return false;
 		}
 		
@@ -228,7 +235,7 @@ class WP_Theme_Updater {
 			
 		} catch ( JsonException ) {
 			error_log( '[WP_Theme_Updater] Invalid JSON in repository response.' );
-			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 10 minutes
+			$this->cache_validation_result( $cache_key, false, self::CACHE_DURATION ); // Cache failure for 30 minutes
 			return false;
 		}
 		
@@ -286,7 +293,7 @@ class WP_Theme_Updater {
 			return $transient;
 		}
 		
-		// Cache API response for 10 minutes (adjust duration as needed).
+		// Cache API response
 		$cache_key  = 'wp_github_theme_update_' . $this->theme_slug;
 		$data       = get_transient( $cache_key );
 		
@@ -313,14 +320,14 @@ class WP_Theme_Updater {
 			if ( $response_code === 403 ) {
 				error_log(sprintf(
 					'[WP_Theme_Updater] GitHub API rate limit of "%1$d" requests exceeded. Limit resets at %2$s UTC timezone.',
-					wp_remote_retrieve_header($response, 'x-ratelimit-limit'),
-					date('F j, Y H:i:s', wp_remote_retrieve_header($response, 'x-ratelimit-reset'))
+					(int) wp_remote_retrieve_header($response, 'x-ratelimit-limit'),
+					date('F j, Y H:i:s', (int) wp_remote_retrieve_header($response, 'x-ratelimit-reset'))
 				));
 				return $transient;
 			}
 			
 			if ( $response_code === 404 ) {
-				error_log( '[WP_Theme_Updater] GitHub Repository Not Found.', );
+				error_log( '[WP_Theme_Updater] GitHub Repository Not Found.' );
 				return $transient;
 			}
 			
@@ -505,8 +512,6 @@ class WP_Theme_Updater {
 		global $pagenow;
 		
 		if ( 'update-core.php' === $pagenow && isset($_GET['force-check']) ) {
-			$this->clear_transient();
-		} elseif ( 'themes.php' === $pagenow && current_user_can('update_themes') ) {
 			$this->clear_transient();
 		}
 	}

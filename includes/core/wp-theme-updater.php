@@ -189,11 +189,11 @@ class WP_Theme_Updater {
 			return false;
 		}
 		
-		$response_code = wp_remote_retrieve_response_code( $response );
+		$response_code  = wp_remote_retrieve_response_code( $response );
 		$headers        = wp_remote_retrieve_headers($response);
 		$rate_limit     = isset($headers['x-ratelimit-limit'])      ? (int) $headers['x-ratelimit-limit']     : null;
 		$rate_remaining = isset($headers['x-ratelimit-remaining'])  ? (int) $headers['x-ratelimit-remaining'] : null;
-		$rate_reset     = $headers['x-ratelimit-reset']             ? date('F j, Y H:i:s', (int) $headers['x-ratelimit-reset']) : null;
+		$rate_reset     = isset($headers['x-ratelimit-reset'])      ? date('F j, Y H:i:s', (int) $headers['x-ratelimit-reset']) : null;
 		
 		if ( $rate_remaining !== null && $rate_remaining < 3 ) {
 			error_log(sprintf(
